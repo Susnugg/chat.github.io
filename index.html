@@ -93,10 +93,28 @@
         const firebase = window.firebase;
         if (firebase) firebase.firestore.setLogLevel('debug');
         
-        // Global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // ==========================================================
+        // IMPORTANT: YOUR FIREBASE PROJECT'S CONFIGURATION.
+        // ==========================================================
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyBVeZx0Yv3nTmj7uRwScxm5Q8ObLH0bBm0",
+            authDomain: "chat-c637b.firebaseapp.com",
+            projectId: "chat-c637b",
+            storageBucket: "chat-c637b.firebasestorage.app",
+            messagingSenderId: "678081195752",
+            appId: "1:678081195752:web:70d9f504c25dded6a8e35d",
+            measurementId: "G-KPKNCPTD6W"
+        };
+        
+        const appId = firebaseConfig.projectId;
+
+        // The initial auth token is not needed on a public host like GitHub Pages.
+        const initialAuthToken = null;
+        
+        // ==========================================================
+        // END OF CONFIGURATION SECTION
+        // ==========================================================
         
         // The secret code for admin access
         const ADMIN_CODE = '8675309';
