@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chat-scroll-container {
+            max-height: 70vh;
+            overflow-y: auto;
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+        }
+        .chat-scroll-container::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Username Input Modal/Form -->
+    <div id="usernamePrompt" class="absolute inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col space-y-4">
+            <h2 class="text-2xl font-bold text-center text-gray-800">Choose a Username</h2>
+            <form id="usernameForm" class="flex flex-col space-y-4">
+                <input type="text" id="usernameInput" placeholder="Enter your username" required
+                       class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-300">
+                <input type="text" id="code-input" placeholder="Secret Code (Optional)"
+                       class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-300">
+                <button type="submit"
+                        class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-lg hover:bg-indigo-700 transition-all duration-300 transform hover:scale-105">
+                    Start Chatting
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Main Chat Container (Initially Hidden) -->
+    <div id="chatContainer" class="hidden bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg flex flex-col space-y-4">
+        <h1 class="text-3xl font-bold text-center text-gray-800">Global Chat</h1>
+        
+        <!-- Tab Navigation -->
+        <div id="chatTabs" class="flex justify-around rounded-full p-1 bg-gray-200">
+            <button class="tab-button w-1/5 py-2 px-4 rounded-full text-sm font-semibold text-center transition-all duration-300" data-tab="general">General</button>
+            <button class="tab-button w-1/5 py-2 px-4 rounded-full text-sm font-semibold text-center transition-all duration-300" data-tab="roleplay-1">Roleplay 1</button>
+            <button class="tab-button w-1/5 py-2 px-4 rounded-full text-sm font-semibold text-center transition-all duration-300" data-tab="roleplay-2">Roleplay 2</button>
+            <button class="tab-button w-1/5 py-2 px-4 rounded-full text-sm font-semibold text-center transition-all duration-300" data-tab="memes">Memes</button>
+            <button class="tab-button w-1/5 py-2 px-4 rounded-full text-sm font-semibold text-center transition-all duration-300 bg-red-500 text-white" data-tab="report">Report</button>
+        </div>
+        
+        <p id="usernameDisplay" class="text-sm text-center text-gray-500 font-mono break-all"></p>
+
+        <!-- Message Display Area -->
+        <div id="messagesContainer" class="flex-grow chat-scroll-container border border-gray-200 rounded-xl p-4 space-y-4">
+            <!-- Messages will be injected here by JavaScript -->
+        </div>
+
+        <!-- Chat Form -->
+        <form id="chatForm" class="flex space-x-2">
+            <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off"
+                   class="flex-grow px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-300">
+            <button type="submit"
+                    class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-full shadow-lg hover:bg-indigo-700 transition-all duration-300 transform hover:scale-105">
+                Send
+            </button>
+        </form>
+
+        <!-- Report Form (hidden initially) -->
+        <form id="reportForm" class="hidden flex flex-col space-y-2">
+            <input type="text" id="subjectInput" placeholder="Ticket Subject" required
+                   class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-300">
+            <textarea id="descriptionInput" placeholder="Describe the issue..." rows="4" required
+                      class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-300"></textarea>
+            <button type="submit"
+                    class="bg-red-600 text-white font-semibold py-2 px-6 rounded-lg shadow-lg hover:bg-red-700 transition-all duration-300 transform hover:scale-105">
+                Submit Ticket
+            </button>
+        </form>
+    </div>
+
+    <!-- Firebase and Firestore Scripts -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, getDoc, doc, setDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Firestore log level
+        const firebase = window.firebase;
+        if (firebase) firebase.firestore.setLogLevel('debug');
+        
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // The secret code for admin access
+        const ADMIN_CODE = '8675309';
+
+        // Elements from the DOM
+        const usernamePrompt = document.getElementById('usernamePrompt');
+        const usernameForm = document.getElementById('usernameForm');
+        const usernameInput = document.getElementById('usernameInput');
+        const codeInput = document.getElementById('code-input');
+        const chatContainer = document.getElementById('chatContainer');
+        const messagesContainer = document.getElementById('messagesContainer');
+        const chatForm = document.getElementById('chatForm');
+        const messageInput = document.getElementById('messageInput');
+        const usernameDisplay = document.getElementById('usernameDisplay');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const reportForm = document.getElementById('reportForm');
+        const subjectInput = document.getElementById('subjectInput');
+        const descriptionInput = document.getElementById('descriptionInput');
+
+        let db, auth;
+        let userId;
+        let username = localStorage.getItem('chat_username');
+        let currentTab = 'general';
+        let unsubscribe; // To hold the unsubscribe function for the Firestore listener
+        let userProfiles = {}; // Cache to store user roles
+
+        // Show/hide chat and username prompt based on local storage
+        if (username) {
+            usernamePrompt.classList.add('hidden');
+            chatContainer.classList.remove('hidden');
+            usernameDisplay.textContent = `Signed in as: ${username}`;
+        } else {
+            usernamePrompt.classList.remove('hidden');
+            chatContainer.classList.add('hidden');
+        }
+
+        // Handle username submission
+        usernameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newUsername = usernameInput.value.trim();
+            const enteredCode = codeInput.value.trim();
+            if (newUsername) {
+                username = newUsername;
+                localStorage.setItem('chat_username', username);
+                usernamePrompt.classList.add('hidden');
+                chatContainer.classList.remove('hidden');
+                usernameDisplay.textContent = `Signed in as: ${username}`;
+                // After setting the username, initialize Firebase if not already done
+                if (!db) {
+                    initFirebase(enteredCode);
+                }
+            }
+        });
+
+        // Initialize Firebase
+        const initFirebase = (enteredCode) => {
+            if (Object.keys(firebaseConfig).length > 0) {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Auth state listener to handle user sign-in
+                onAuthStateChanged(auth, async (user) => {
+                    if (!user) {
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (error) {
+                            console.error("Firebase Auth Error: ", error);
+                        }
+                    } else {
+                        userId = user.uid;
+                        await ensureUserProfile(enteredCode);
+                        // Set up Firestore listener after authentication
+                        setupFirestoreListener();
+                        updateTabUI();
+                    }
+                });
+            } else {
+                console.error("Firebase config is missing.");
+            }
+        };
+
+        const ensureUserProfile = async (enteredCode) => {
+            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userId);
+            const userDoc = await getDoc(userRef);
+
+            if (!userDoc.exists()) {
+                const role = enteredCode === ADMIN_CODE ? 'admin' : 'member';
+                await setDoc(userRef, {
+                    username: username,
+                    role: role,
+                    timestamp: Date.now()
+                });
+            }
+        };
+
+        const fetchUserProfiles = async () => {
+            const usersRef = collection(db, 'artifacts', appId, 'public', 'data', 'users');
+            const userSnapshot = await getDocs(usersRef);
+            userProfiles = {};
+            userSnapshot.forEach(doc => {
+                userProfiles[doc.id] = doc.data();
+            });
+        };
+
+        // Attach a listener to each tab button
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const newTab = button.getAttribute('data-tab');
+                if (newTab !== currentTab) {
+                    currentTab = newTab;
+                    updateTabUI();
+                    setupFirestoreListener();
+                }
+            });
+        });
+
+        // Update the UI to reflect the active tab and form
+        const updateTabUI = () => {
+            tabButtons.forEach(button => {
+                const tab = button.getAttribute('data-tab');
+                if (tab === currentTab) {
+                    if (tab === 'report') {
+                         button.classList.add('bg-red-600', 'text-white');
+                         button.classList.remove('bg-gray-200', 'text-gray-800');
+                         chatForm.classList.add('hidden');
+                         reportForm.classList.remove('hidden');
+                    } else {
+                        button.classList.add('bg-indigo-600', 'text-white');
+                        button.classList.remove('bg-gray-200', 'text-gray-800');
+                        chatForm.classList.remove('hidden');
+                        reportForm.classList.add('hidden');
+                    }
+                } else {
+                    if (tab === 'report') {
+                        button.classList.remove('bg-red-600', 'bg-gray-200');
+                        button.classList.add('bg-red-500', 'text-white');
+                    } else {
+                        button.classList.remove('bg-indigo-600', 'text-white');
+                        button.classList.add('bg-gray-200', 'text-gray-800');
+                    }
+                }
+            });
+        };
+
+        // Setup the real-time Firestore listener for messages
+        const setupFirestoreListener = async () => {
+            // Unsubscribe from the previous listener if it exists
+            if (unsubscribe) {
+                unsubscribe();
+            }
+            
+            await fetchUserProfiles(); // Fetch user profiles before listening for messages
+
+            // Correctly form the collection path with an odd number of segments
+            const messagesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'chats', currentTab, 'messages');
+            const q = query(messagesCollection, orderBy('timestamp'));
+
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                messagesContainer.innerHTML = ''; // Clear existing messages
+                snapshot.forEach((doc) => {
+                    const msg = doc.data();
+                    const isMyMessage = msg.userId === userId;
+                    const userRole = userProfiles[msg.userId] ? userProfiles[msg.userId].role : 'member';
+                    const messageUsername = msg.username || 'Anonymous';
+
+                    // Create message element
+                    const messageElement = document.createElement('div');
+                    messageElement.classList.add('flex', 'flex-col', 'p-3', 'rounded-lg', 'shadow-sm');
+                    
+                    const usernameSpan = document.createElement('span');
+                    usernameSpan.classList.add('font-semibold', 'text-xs', 'mb-1', 'opacity-80');
+                    
+                    if (isMyMessage) {
+                        usernameSpan.textContent = 'You';
+                    } else if (userRole === 'admin') {
+                        usernameSpan.textContent = `(Admin) ${messageUsername}`;
+                    } else {
+                        usernameSpan.textContent = `(Member) ${messageUsername}`;
+                    }
+
+                    // Check if it's a report ticket and format accordingly
+                    if (currentTab === 'report') {
+                        messageElement.classList.add('bg-red-100');
+                        const subjectSpan = document.createElement('span');
+                        subjectSpan.classList.add('font-bold', 'text-red-700', 'mb-1');
+                        subjectSpan.textContent = `Subject: ${msg.subject}`;
+                        messageElement.appendChild(subjectSpan);
+                        
+                        const descriptionText = document.createElement('p');
+                        descriptionText.classList.add('text-sm', 'break-words');
+                        descriptionText.textContent = msg.description;
+                        messageElement.appendChild(descriptionText);
+
+                        messageElement.appendChild(usernameSpan); // Append username at the bottom
+                    } else {
+                        const messageText = document.createElement('p');
+                        messageText.classList.add('text-sm', 'break-words');
+                        messageText.textContent = msg.messageText;
+
+                        messageElement.appendChild(usernameSpan);
+                        messageElement.appendChild(messageText);
+                        
+                        if (isMyMessage) {
+                            messageElement.classList.add('bg-indigo-100', 'self-end');
+                            messageElement.style.marginLeft = 'auto'; // Ensures alignment to the right
+                            usernameSpan.classList.add('text-right');
+                        } else {
+                            messageElement.classList.add('bg-gray-200', 'self-start');
+                            messageElement.style.marginRight = 'auto'; // Ensures alignment to the left
+                        }
+                    }
+
+                    messagesContainer.appendChild(messageElement);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight; // Auto-scroll to the bottom
+                });
+            }, (error) => {
+                console.error("Firestore listen error: ", error);
+            });
+        };
+
+        // Handle sending a new message
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const messageText = messageInput.value.trim();
+
+            if (messageText && userId && username) {
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chats', currentTab, 'messages'), {
+                        userId: userId,
+                        username: username,
+                        messageText: messageText,
+                        timestamp: Date.now(),
+                    });
+                    messageInput.value = '';
+                } catch (error) {
+                    console.error("Error adding document: ", error);
+                }
+            }
+        });
+
+        // Handle report submission
+        reportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const subject = subjectInput.value.trim();
+            const description = descriptionInput.value.trim();
+
+            if (subject && description && userId && username) {
+                try {
+                    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chats', 'report', 'messages'), {
+                        userId: userId,
+                        username: username,
+                        subject: subject,
+                        description: description,
+                        timestamp: Date.now(),
+                    });
+                    subjectInput.value = '';
+                    descriptionInput.value = '';
+                } catch (error) {
+                    console.error("Error submitting report: ", error);
+                }
+            }
+        });
+
+
+        // Initialize Firebase if a username is already set
+        if (username) {
+            initFirebase();
+        }
+
+    </script>
+</body>
+</html>
