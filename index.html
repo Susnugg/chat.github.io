@@ -11,13 +11,37 @@
             font-family: 'Inter', sans-serif;
         }
         .chat-scroll-container {
-            max-height: 70vh;
+            max-height: 85vh;
             overflow-y: auto;
             -ms-overflow-style: none; /* IE and Edge */
             scrollbar-width: none; /* Firefox */
         }
         .chat-scroll-container::-webkit-scrollbar {
             display: none; /* Chrome, Safari, Opera */
+        }
+        .highlighted-message {
+            background-color: #fffbeb; /* A light yellow for highlighting */
+            border-color: #fcd34d; /* A subtle yellow border */
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
@@ -39,7 +63,7 @@
             </form>
         </div>
     </div>
-    
+
     <!-- Main Chat Container (Initially Hidden) -->
     <div id="chatContainer" class="hidden bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg flex flex-col space-y-4">
         <h1 class="text-3xl font-bold text-center text-gray-800">Global Chat</h1>
@@ -55,8 +79,13 @@
         
         <p id="usernameDisplay" class="text-sm text-center text-gray-500 font-mono break-all"></p>
 
+        <!-- New: Edit Profile Button -->
+        <button id="editProfileBtn" class="bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-full hover:bg-gray-400 transition-all duration-300 transform hover:scale-105">
+            Edit Profile
+        </button>
+
         <!-- Message Display Area -->
-        <div id="messagesContainer" class="flex-grow chat-scroll-container border border-gray-200 rounded-xl p-4 space-y-4">
+        <div id="messagesContainer" class="flex-grow chat-scroll-container border border-gray-200 rounded-xl p-4 space-y-4 h-full">
             <!-- Messages will be injected here by JavaScript -->
         </div>
 
@@ -81,6 +110,35 @@
                 Submit Ticket
             </button>
         </form>
+    </div>
+
+    <!-- New: Profile Display Modal -->
+    <div id="profileModal" class="modal hidden">
+        <div class="modal-content text-center">
+            <button id="closeProfileModal" class="float-right text-gray-500 hover:text-gray-700">&times;</button>
+            <img id="profileImage" src="https://placehold.co/100x100/e2e8f0/64748b?text=User" alt="Profile Picture" class="rounded-full mx-auto mb-4 w-24 h-24 object-cover">
+            <h3 id="profileUsername" class="text-xl font-bold text-gray-800"></h3>
+            <p id="profileRole" class="text-sm text-gray-500"></p>
+            <p id="profileBio" class="text-gray-700 mt-4 text-left"></p>
+        </div>
+    </div>
+
+    <!-- New: Edit Profile Modal -->
+    <div id="editProfileModal" class="modal hidden">
+        <div class="modal-content text-center">
+            <button id="closeEditProfileModal" class="float-right text-gray-500 hover:text-gray-700">&times;</button>
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">Edit Your Profile</h3>
+            <form id="editProfileForm" class="flex flex-col space-y-4">
+                <input type="text" id="editProfileImage" placeholder="Profile Picture URL"
+                       class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-300">
+                <textarea id="editProfileBio" placeholder="Tell us about yourself..." rows="4"
+                          class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-300"></textarea>
+                <button type="submit"
+                        class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-lg hover:bg-indigo-700 transition-all duration-300 transform hover:scale-105">
+                    Save Profile
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Firebase and Firestore Scripts -->
@@ -133,6 +191,20 @@
         const reportForm = document.getElementById('reportForm');
         const subjectInput = document.getElementById('subjectInput');
         const descriptionInput = document.getElementById('descriptionInput');
+        
+        // New Profile Elements
+        const editProfileBtn = document.getElementById('editProfileBtn');
+        const profileModal = document.getElementById('profileModal');
+        const closeProfileModal = document.getElementById('closeProfileModal');
+        const profileImage = document.getElementById('profileImage');
+        const profileUsername = document.getElementById('profileUsername');
+        const profileRole = document.getElementById('profileRole');
+        const profileBio = document.getElementById('profileBio');
+        const editProfileModal = document.getElementById('editProfileModal');
+        const closeEditProfileModal = document.getElementById('closeEditProfileModal');
+        const editProfileForm = document.getElementById('editProfileForm');
+        const editProfileImage = document.getElementById('editProfileImage');
+        const editProfileBio = document.getElementById('editProfileBio');
 
         let db, auth;
         let userId;
@@ -207,10 +279,13 @@
 
             if (!userDoc.exists()) {
                 const role = enteredCode === ADMIN_CODE ? 'admin' : 'member';
+                // Add new fields for profile
                 await setDoc(userRef, {
                     username: username,
                     role: role,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    bio: '',
+                    profileImageUrl: ''
                 });
             }
         };
@@ -287,10 +362,17 @@
 
                     // Create message element
                     const messageElement = document.createElement('div');
-                    messageElement.classList.add('flex', 'flex-col', 'p-3', 'rounded-lg', 'shadow-sm');
+                    messageElement.classList.add('flex', 'flex-col', 'p-3', 'rounded-lg', 'shadow-sm', 'border');
+                    
+                    // Check for mention and apply highlight class
+                    if (msg.messageText.includes(`@${username}`)) {
+                        messageElement.classList.add('highlighted-message');
+                    }
                     
                     const usernameSpan = document.createElement('span');
-                    usernameSpan.classList.add('font-semibold', 'text-xs', 'mb-1', 'opacity-80');
+                    usernameSpan.classList.add('font-semibold', 'text-xs', 'mb-1', 'opacity-80', 'cursor-pointer', 'hover:underline');
+                    usernameSpan.setAttribute('data-user-id', msg.userId);
+                    usernameSpan.addEventListener('click', (e) => showProfileModal(e.target.dataset.userId));
                     
                     if (isMyMessage) {
                         usernameSpan.textContent = 'You';
@@ -317,7 +399,9 @@
                     } else {
                         const messageText = document.createElement('p');
                         messageText.classList.add('text-sm', 'break-words');
-                        messageText.textContent = msg.messageText;
+                        
+                        const formattedText = msg.messageText.replace(/\*(.*?)\*/g, '<i>$1</i>');
+                        messageText.innerHTML = formattedText;
 
                         messageElement.appendChild(usernameSpan);
                         messageElement.appendChild(messageText);
@@ -382,6 +466,73 @@
                 }
             }
         });
+
+        // ==========================================================
+        // NEW PROFILE FUNCTIONALITY
+        // ==========================================================
+        
+        // Show the profile display modal
+        const showProfileModal = async (profileUserId) => {
+            if (profileUserId && userProfiles[profileUserId]) {
+                const userProfile = userProfiles[profileUserId];
+                profileUsername.textContent = userProfile.username || 'Anonymous';
+                profileRole.textContent = `Role: ${userProfile.role || 'Member'}`;
+                profileBio.textContent = userProfile.bio || 'This user has not set a bio yet.';
+                profileImage.src = userProfile.profileImageUrl || 'https://placehold.co/100x100/e2e8f0/64748b?text=User';
+                profileModal.classList.remove('hidden');
+            }
+        };
+
+        // Show the edit profile modal
+        editProfileBtn.addEventListener('click', async () => {
+            if (userId) {
+                await fetchUserProfiles();
+                const myProfile = userProfiles[userId] || {};
+                editProfileImage.value = myProfile.profileImageUrl || '';
+                editProfileBio.value = myProfile.bio || '';
+                editProfileModal.classList.remove('hidden');
+            }
+        });
+
+        // Handle saving the profile
+        editProfileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newBio = editProfileBio.value.trim();
+            const newImageUrl = editProfileImage.value.trim();
+
+            if (userId) {
+                const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'users', userId);
+                try {
+                    await setDoc(userRef, {
+                        bio: newBio,
+                        profileImageUrl: newImageUrl
+                    }, { merge: true });
+                    editProfileModal.classList.add('hidden');
+                    // Force a re-fetch of profiles to update the cache
+                    await fetchUserProfiles();
+                } catch (error) {
+                    console.error("Error updating profile:", error);
+                }
+            }
+        });
+
+        // Close modals
+        closeProfileModal.addEventListener('click', () => profileModal.classList.add('hidden'));
+        closeEditProfileModal.addEventListener('click', () => editProfileModal.classList.add('hidden'));
+        
+        // Close modals when clicking outside
+        window.addEventListener('click', (e) => {
+            if (e.target === profileModal) {
+                profileModal.classList.add('hidden');
+            }
+            if (e.target === editProfileModal) {
+                editProfileModal.classList.add('hidden');
+            }
+        });
+
+        // ==========================================================
+        // END OF NEW PROFILE FUNCTIONALITY
+        // ==========================================================
 
 
         // Initialize Firebase if a username is already set
